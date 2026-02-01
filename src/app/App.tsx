@@ -130,6 +130,7 @@ const App = () => {
           height="100%"
           style={{ height: "100%" }}
           extensions={[jsonLang()]}
+          placeholder="Paste your JSON here or click Sample to load example..."
           onUpdate={(cm) => {
             if (param.hidenheader === "1") {
               return;
