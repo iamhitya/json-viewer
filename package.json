@@ -2,6 +2,7 @@
   "name": "json-viewer",
   "version": "1.0.0",
   "description": "Online JSON Viewer, JSON Beautifier to beautify and tree view of JSON data - It works as JSON Pretty Print to pretty print JSON data.",
+  "homepage": "https://iamhitya.github.io/json-viewer",
   "private": true,
   "scripts": {
     "start": "kkt start",
