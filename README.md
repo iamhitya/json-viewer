@@ -4,7 +4,7 @@ A modern, lightweight, and feature-rich JSON viewer and beautifier for viewing, 
 
 **[🚀 Live Demo](https://iamhitya.github.io/json-viewer)**
 
-![Screenshot of the Free QR Code Generator](https://raw.githubusercontent.com/iamhitya/json-viewer/refs/heads/master/public/assets/og_image.png)
+![Screenshot of the JSON Viewer](https://raw.githubusercontent.com/iamhitya/json-viewer/refs/heads/master/public/assets/og_image.png)
 
 ## ✨ Features
 
