@@ -4,7 +4,6 @@ import GitHubCorners from "@uiw/react-github-corners";
 import JsonViewer from "@uiw/react-json-view";
 import CodeMirror, { ReactCodeMirrorRef } from "@uiw/react-codemirror";
 import { json as jsonLang } from "@codemirror/lang-json";
-import { createHashHistory } from "history";
 import styles from "./App.module.css";
 
 type Parameters = {
@@ -15,28 +14,14 @@ type Parameters = {
   view?: "preview" | "editor";
 };
 type ViewMode = "split" | "editor" | "preview";
-const history = createHashHistory();
 const getURLParameters = (url: string): Parameters =>
   ((url.match(/([^?=&]+)(=([^&]*))/g) || []) as any).reduce(
-    (a: any, v: string) => (
-      (a[v.slice(0, v.indexOf("="))] = v.slice(v.indexOf("=") + 1)),
-      a
-    ),
+    (a: any, v: string) => {
+      a[v.slice(0, v.indexOf("="))] = v.slice(v.indexOf("=") + 1);
+      return a;
+    },
     {},
   );
-const objectToQueryString = (queryParameters: Parameters) => {
-  return queryParameters
-    ? Object.entries(queryParameters).reduce(
-        (queryString, [key, val], index) => {
-          const symbol = queryString.length === 0 ? "?" : "&";
-          queryString +=
-            typeof val === "string" ? `${symbol}${key}=${val}` : "";
-          return queryString;
-        },
-        "",
-      )
-    : "";
-};
 
 const App = () => {
   const param = getURLParameters(window.location.href);
