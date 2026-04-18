@@ -1,7 +1,14 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import Split from "@uiw/react-split";
 import GitHubCorners from "@uiw/react-github-corners";
 import JsonViewer from "@uiw/react-json-view";
+import type { SemicolonProps } from "@uiw/react-json-view";
 import CodeMirror, { ReactCodeMirrorRef } from "@uiw/react-codemirror";
 import { json as jsonLang } from "@codemirror/lang-json";
 import styles from "./App.module.css";
@@ -14,6 +21,14 @@ type Parameters = {
   view?: "preview" | "editor";
 };
 type ViewMode = "split" | "editor" | "preview";
+
+interface SearchMatch {
+  path: Array<string | number>;
+  type: "key" | "value";
+  value: unknown;
+  keyName?: string | number;
+}
+
 const getURLParameters = (url: string): Parameters =>
   ((url.match(/([^?=&]+)(=([^&]*))/g) || []) as any).reduce(
     (a: any, v: string) => {
@@ -23,16 +38,74 @@ const getURLParameters = (url: string): Parameters =>
     {},
   );
 
+const findMatches = (
+  obj: unknown,
+  searchTerm: string,
+  path: Array<string | number> = [],
+): SearchMatch[] => {
+  if (!searchTerm.trim()) return [];
+
+  const matches: SearchMatch[] = [];
+  const lowerSearchTerm = searchTerm.toLowerCase();
+
+  if (Array.isArray(obj)) {
+    obj.forEach((item, index) => {
+      const newPath = [...path, index];
+      matches.push(...findMatches(item, searchTerm, newPath));
+    });
+  } else if (obj !== null && typeof obj === "object") {
+    Object.entries(obj as Record<string, unknown>).forEach(
+      ([key, value]) => {
+        const newPath = [...path, key];
+
+        if (key.toLowerCase().includes(lowerSearchTerm)) {
+          matches.push({
+            path: newPath,
+            type: "key",
+            value,
+            keyName: key,
+          });
+        }
+
+        matches.push(...findMatches(value, searchTerm, newPath));
+      },
+    );
+  } else {
+    const valueStr = String(obj);
+    if (valueStr.toLowerCase().includes(lowerSearchTerm)) {
+      matches.push({
+        path,
+        type: "value",
+        value: obj,
+      });
+    }
+  }
+
+  return matches;
+};
+
+const pathsMatch = (
+  path1: Array<string | number>,
+  path2: Array<string | number>,
+): boolean => {
+  if (path1.length !== path2.length) return false;
+  return path1.every((p, i) => p === path2[i]);
+};
+
 const App = () => {
   const param = getURLParameters(window.location.href);
   const cmRef = useRef<ReactCodeMirrorRef>(null);
   param.json = param.json ? decodeURI(param.json) : undefined;
   const [code, setCode] = useState(decodeURIComponent(param.json || ""));
-  const [json, setJson] = useState();
+  const [json, setJson] = useState<unknown>();
   const [message, setMessage] = useState("");
   const [status, setStatus] = useState("");
   const [linebar, setLinebar] = useState("");
   const [viewMode, setViewMode] = useState<ViewMode>(param.view ?? "split");
+
+  const [searchTerm, setSearchTerm] = useState("");
+  const [searchMatches, setSearchMatches] = useState<SearchMatch[]>([]);
+  const [currentMatchIndex, setCurrentMatchIndex] = useState(-1);
 
   const handleJson = useCallback(() => {
     setMessage("");
@@ -41,6 +114,8 @@ const App = () => {
       if (code) {
         const obj = JSON.parse(code);
         setJson(obj);
+      } else {
+        setJson(undefined);
       }
     } catch (error) {
       if (error instanceof Error) {
@@ -51,6 +126,7 @@ const App = () => {
       }
     }
   }, [code]);
+
   const formatJson = useCallback(
     (_: any, replacer: number = 2) => {
       setMessage("");
@@ -88,6 +164,9 @@ const App = () => {
     setJson(undefined);
     setMessage("");
     setStatus("Cleared");
+    setSearchTerm("");
+    setSearchMatches([]);
+    setCurrentMatchIndex(-1);
   };
 
   const handleLoadSample = () => {
@@ -98,6 +177,11 @@ const App = () => {
         active: true,
         tags: ["viewer", "json"],
         items: [{ id: 1 }, { id: 2 }],
+        config: {
+          theme: "light",
+          fontSize: 14,
+          autoSave: true,
+        },
       },
       null,
       2,
@@ -110,10 +194,126 @@ const App = () => {
     handleJson();
   }, [code, handleJson]);
 
+  useEffect(() => {
+    if (json && searchTerm.trim()) {
+      const matches = findMatches(json, searchTerm);
+      setSearchMatches(matches);
+      setCurrentMatchIndex(matches.length > 0 ? 0 : -1);
+    } else {
+      setSearchMatches([]);
+      setCurrentMatchIndex(-1);
+    }
+  }, [json, searchTerm]);
+
+  const goToNextMatch = () => {
+    if (searchMatches.length === 0) return;
+    const nextIndex =
+      currentMatchIndex >= searchMatches.length - 1 ? 0 : currentMatchIndex + 1;
+    setCurrentMatchIndex(nextIndex);
+  };
+
+  const goToPrevMatch = () => {
+    if (searchMatches.length === 0) return;
+    const prevIndex =
+      currentMatchIndex <= 0 ? searchMatches.length - 1 : currentMatchIndex - 1;
+    setCurrentMatchIndex(prevIndex);
+  };
+
+  const clearSearch = () => {
+    setSearchTerm("");
+    setSearchMatches([]);
+    setCurrentMatchIndex(-1);
+  };
+
   const resolvedView: ViewMode = param.view ?? viewMode;
   const viewLocked = Boolean(param.view);
   const showEditor = resolvedView === "editor" || resolvedView === "split";
   const showPreview = resolvedView === "preview" || resolvedView === "split";
+
+  const customComponents = useMemo(() => {
+    const isCurrentMatch = (
+      namespace: Array<string | number> | undefined,
+      keyName: string | number | undefined,
+      type: "key" | "value",
+    ): boolean => {
+      if (currentMatchIndex < 0 || !namespace) return false;
+      const currentMatch = searchMatches[currentMatchIndex];
+      if (!currentMatch) return false;
+
+      if (currentMatch.type !== type) return false;
+
+      if (type === "key") {
+        return (
+          pathsMatch(namespace, currentMatch.path) &&
+          keyName === currentMatch.keyName
+        );
+      }
+
+      return pathsMatch(namespace, currentMatch.path);
+    };
+
+    const isMatch = (
+      namespace: Array<string | number> | undefined,
+      keyName: string | number | undefined,
+      type: "key" | "value",
+      value?: unknown,
+    ): boolean => {
+      if (!searchTerm.trim() || !namespace) return false;
+
+      return searchMatches.some((match) => {
+        if (match.type !== type) return false;
+
+        if (type === "key") {
+          return (
+            pathsMatch(namespace, match.path) && keyName === match.keyName
+          );
+        }
+
+        return pathsMatch(namespace, match.path);
+      });
+    };
+
+    return {
+      objectKey: (props: SemicolonProps) => {
+        const { keyName, namespace, children } = props;
+        const isCurrent = isCurrentMatch(namespace, keyName, "key");
+        const isMatched = isMatch(namespace, keyName, "key");
+
+        if (!isMatched || !searchTerm.trim()) {
+          return <>{children}</>;
+        }
+
+        return (
+          <span
+            className={
+              isCurrent ? styles.searchCurrentMatch : styles.searchHighlight
+            }
+          >
+            {children}
+          </span>
+        );
+      },
+      value: (props: any) => {
+        const { value, namespace, children } = props;
+        const isCurrent = isCurrentMatch(namespace, undefined, "value");
+        const isMatched = isMatch(namespace, undefined, "value", value);
+
+        if (!isMatched || !searchTerm.trim()) {
+          return <>{children}</>;
+        }
+
+        return (
+          <span
+            className={
+              isCurrent ? styles.searchCurrentMatch : styles.searchHighlight
+            }
+          >
+            {children}
+          </span>
+        );
+      },
+    };
+  }, [searchTerm, searchMatches, currentMatchIndex]);
 
   const editor = (
     <div
@@ -172,7 +372,12 @@ const App = () => {
     >
       {message && <pre className={styles.previewError}>{message}</pre>}
       {json && typeof json == "object" && (
-        <JsonViewer value={json!} style={{}} displayDataTypes={false} />
+        <JsonViewer
+          value={json!}
+          style={{}}
+          displayDataTypes={false}
+          components={customComponents}
+        />
       )}
     </div>
   );
@@ -205,6 +410,59 @@ const App = () => {
                 )}
               </div>
               <div className={styles.controls}>
+                <div className={styles.searchContainer}>
+                  <input
+                    type="text"
+                    className={styles.searchInput}
+                    placeholder="Search in JSON..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        if (e.shiftKey) {
+                          goToPrevMatch();
+                        } else {
+                          goToNextMatch();
+                        }
+                      }
+                      if (e.key === "Escape") {
+                        clearSearch();
+                      }
+                    }}
+                  />
+                  {searchTerm && (
+                    <span className={styles.searchCount}>
+                      {searchMatches.length > 0
+                        ? `${currentMatchIndex + 1}/${searchMatches.length}`
+                        : "0/0"}
+                    </span>
+                  )}
+                  <button
+                    className={styles.searchNavBtn}
+                    onClick={goToPrevMatch}
+                    disabled={searchMatches.length === 0}
+                    title="Previous match (Shift+Enter)"
+                  >
+                    ↑
+                  </button>
+                  <button
+                    className={styles.searchNavBtn}
+                    onClick={goToNextMatch}
+                    disabled={searchMatches.length === 0}
+                    title="Next match (Enter)"
+                  >
+                    ↓
+                  </button>
+                  {searchTerm && (
+                    <button
+                      className={styles.searchClearBtn}
+                      onClick={clearSearch}
+                      title="Clear search (Esc)"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
                 <div className={styles.segment}>
                   <button
                     className={resolvedView === "split" ? styles.active : ""}
