@@ -230,8 +230,8 @@ const App = () => {
   const showEditor = resolvedView === "editor" || resolvedView === "split";
   const showPreview = resolvedView === "preview" || resolvedView === "split";
 
-  const customComponents = useMemo(() => {
-    const isCurrentMatch = (
+  const isCurrentMatch = useCallback(
+    (
       namespace: Array<string | number> | undefined,
       keyName: string | number | undefined,
       type: "key" | "value",
@@ -250,9 +250,12 @@ const App = () => {
       }
 
       return pathsMatch(namespace, currentMatch.path);
-    };
+    },
+    [currentMatchIndex, searchMatches],
+  );
 
-    const isMatch = (
+  const isMatch = useCallback(
+    (
       namespace: Array<string | number> | undefined,
       keyName: string | number | undefined,
       type: "key" | "value",
@@ -271,8 +274,11 @@ const App = () => {
 
         return pathsMatch(namespace, match.path);
       });
-    };
+    },
+    [searchTerm, searchMatches],
+  );
 
+  const customComponents = useMemo(() => {
     return {
       objectKey: (props: SemicolonProps) => {
         const { keyName, namespace, children } = props;
@@ -280,7 +286,7 @@ const App = () => {
         const isMatched = isMatch(namespace, keyName, "key");
 
         if (!isMatched || !searchTerm.trim()) {
-          return <>{children}</>;
+          return <React.Fragment>{children}</React.Fragment>;
         }
 
         return (
@@ -299,7 +305,7 @@ const App = () => {
         const isMatched = isMatch(namespace, undefined, "value", value);
 
         if (!isMatched || !searchTerm.trim()) {
-          return <>{children}</>;
+          return <React.Fragment>{children}</React.Fragment>;
         }
 
         return (
@@ -313,7 +319,7 @@ const App = () => {
         );
       },
     };
-  }, [searchTerm, searchMatches, currentMatchIndex]);
+  }, [searchTerm, isCurrentMatch, isMatch]);
 
   const editor = (
     <div
@@ -362,6 +368,23 @@ const App = () => {
     </div>
   );
 
+  const previewContent = () => {
+    if (message) {
+      return <pre className={styles.previewError}>{message}</pre>;
+    }
+    if (json && typeof json == "object") {
+      return (
+        <JsonViewer
+          value={json!}
+          style={{}}
+          displayDataTypes={false}
+          components={customComponents}
+        />
+      );
+    }
+    return null;
+  };
+
   const preview = (
     <div
       className={
@@ -370,15 +393,7 @@ const App = () => {
           : styles.previewPane
       }
     >
-      {message && <pre className={styles.previewError}>{message}</pre>}
-      {json && typeof json == "object" && (
-        <JsonViewer
-          value={json!}
-          style={{}}
-          displayDataTypes={false}
-          components={customComponents}
-        />
-      )}
+      {previewContent()}
     </div>
   );
 
